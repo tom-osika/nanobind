@@ -43,6 +43,16 @@ static uint32_t nb_func_render_signature(Buffer &buf, nb_internals *internals_,
                                          const func_data *f,
                                          bool nb_signature_mode = false) noexcept;
 
+/// Raise an exception if 'self' lost its overloads while rendering a signature
+static bool nb_func_check_redefined(PyObject *self, Py_ssize_t size) noexcept {
+    if (Py_SIZE(self) == size)
+        return false;
+    PyErr_SetString(PyExc_RuntimeError,
+                    "nanobind: function was redefined while rendering its "
+                    "signature!");
+    return true;
+}
+
 int nb_func_traverse(PyObject *self, visitproc visit, void *arg) {
     size_t size = (size_t) Py_SIZE(self);
 
@@ -1392,8 +1402,12 @@ PyObject *nb_method_descr_get(PyObject *self, PyObject *inst, PyObject *) {
 
 /// Render the function signature of a single function
 static uint32_t nb_func_render_signature(Buffer &buf, nb_internals *internals_,
-                                         const func_data *f,
+                                         const func_data *f_in,
                                          bool nb_signature_mode) noexcept {
+    // Work on a copy. Python code invoked below could redefine the function,
+    // which moves its records to a new function object and clears them.
+    const func_data f_copy = *f_in, *f = &f_copy;
+
     const bool is_method      = f->flags & (uint32_t) func_flags::is_method,
                has_args       = f->flags & (uint32_t) func_flags::has_args,
                has_var_args   = f->flags & (uint32_t) func_flags::has_var_args,
